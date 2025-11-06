@@ -1,5 +1,19 @@
+import fs from 'fs';
+
+// Lee el contexto de la web (igual que en Astro)
+const siteInfo = fs.readFileSync('./public/site-info.txt', 'utf-8');
+
+// API key desde Vercel
+const apiKey = process.env.OPENAI_API_KEY;
+
+if (!apiKey) {
+  console.error('🔴 FATAL: La variable de entorno OPENAI_API_KEY no está definida.');
+} else {
+  console.log('✅ OPENAI_API_KEY cargada correctamente para el chatbot.');
+}
+
 export default async function handler(req, res) {
-  // CORS (de momento dejamos * para no liarnos)
+  // CORS (puedes sustituir * por tu dominio cuando quieras)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -15,42 +29,64 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { message, extraContext } = req.body || {};
+    // Vercel ya parsea JSON si el Content-Type es application/json,
+    // pero por si acaso controlamos ambos casos:
+    const body =
+      typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
 
-    if (!message) {
-      res.status(400).json({ error: 'Falta el campo "message"' });
+    const messages = body.messages;
+
+    if (!messages || !Array.isArray(messages)) {
+      res.status(400).json({ error: '"messages" debe ser un array válido' });
       return;
     }
 
-    // 🔑 LLAMADA A OPENAI DESDE EL SERVIDOR
+    const siteContext = `
+Eres el asistente oficial de esta web.
+Solo puedes responder basándote en la siguiente información:
+${siteInfo}
+`;
+
+    console.log('🚀 Llamando a OpenAI con messages:', messages);
+
+    // Llamada a OpenAI vía fetch
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4.1-mini', // cambia aquí al modelo que quieras
+        model: 'gpt-4.1-mini',
         messages: [
-          {
-            role: 'system',
-            content: `Responde usando el siguiente contexto (texto de la web):\n${extraContext || ''}`,
-          },
-          {
-            role: 'user',
-            content: message,
-          },
+          { role: 'system', content: siteContext },
+          ...messages,
         ],
       }),
     });
 
-    const data = await openaiRes.json();
+    const completion = await openaiRes.json();
 
-    const reply = data?.choices?.[0]?.message?.content ?? 'No he podido generar respuesta.';
+    if (!openaiRes.ok) {
+      console.error('🔥 Error desde OpenAI:', completion);
+      res
+        .status(500)
+        .json({ error: 'Error al comunicarse con OpenAI (ver logs)' });
+      return;
+    }
 
-    res.status(200).json({ reply });
+    const answer = completion.choices?.[0]?.message?.content ?? '';
+    console.log('✅ Respuesta generada:', answer);
+
+    res.status(200).json({ answer });
   } catch (error) {
-    console.error('Error en /api/chat:', error);
-    res.status(500).json({ error: 'Error interno en el servidor' });
+    console.error('🔥 Error detallado al llamar a OpenAI:', error);
+
+    let errorMessage = 'Error al comunicarse con OpenAI';
+    if (error instanceof Error) {
+      errorMessage = `Error: ${error.message}`;
+    }
+
+    res.status(500).json({ error: errorMessage });
   }
 }
