@@ -1,28 +1,28 @@
 export default async function handler(req, res) {
-  // 👇 CORS para permitir peticiones desde tu dominio
-  res.setHeader('Access-Control-Allow-Origin', 'https://TU-DOMINIO.COM'); // cámbialo por tu dominio real
+  // CORS (de momento dejamos * para no liarnos)
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
-    // Respuesta al preflight CORS
     res.status(200).end();
     return;
   }
 
   if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
+    res.status(405).json({ error: 'Method not allowed', hint: 'Use POST' });
     return;
   }
 
   try {
-    const body = req.body;
+    const { message, extraContext } = req.body || {};
 
-    // Puedes adaptar esto a cómo envías los datos desde el frontend
-    const userMessage = body.message || '';
-    const extraContext = body.extraContext || ''; // por si le mandas el contenido del .txt o similar
+    if (!message) {
+      res.status(400).json({ error: 'Falta el campo "message"' });
+      return;
+    }
 
-    // ==== LLAMADA A OPENAI DESDE EL SERVIDOR ====
+    // 🔑 LLAMADA A OPENAI DESDE EL SERVIDOR
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -30,15 +30,15 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4.1-mini', // o el modelo que estés usando
+        model: 'gpt-4.1-mini', // cambia aquí al modelo que quieras
         messages: [
           {
             role: 'system',
-            content: `Eres un asistente que responde usando la información de este contexto:\n${extraContext}`,
+            content: `Responde usando el siguiente contexto (texto de la web):\n${extraContext || ''}`,
           },
           {
             role: 'user',
-            content: userMessage,
+            content: message,
           },
         ],
       }),
@@ -46,12 +46,11 @@ export default async function handler(req, res) {
 
     const data = await openaiRes.json();
 
-    // Devuelves la respuesta al frontend
-    res.status(200).json({
-      reply: data.choices?.[0]?.message?.content ?? 'No he podido generar respuesta',
-    });
+    const reply = data?.choices?.[0]?.message?.content ?? 'No he podido generar respuesta.';
+
+    res.status(200).json({ reply });
   } catch (error) {
-    console.error(error);
+    console.error('Error en /api/chat:', error);
     res.status(500).json({ error: 'Error interno en el servidor' });
   }
 }
