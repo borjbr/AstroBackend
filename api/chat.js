@@ -1,7 +1,16 @@
 import fs from 'fs';
+import path from 'path';
 
-// Lee el contexto de la web (igual que en Astro)
-const siteInfo = fs.readFileSync('./public/site-info.txt', 'utf-8');
+// Ruta robusta al site-info.txt
+const siteInfoPath = path.join(process.cwd(), 'public', 'site-info.txt');
+let siteInfo = '';
+
+try {
+  siteInfo = fs.readFileSync(siteInfoPath, 'utf-8');
+  console.log('✅ site-info.txt cargado desde:', siteInfoPath);
+} catch (err) {
+  console.error('🔴 No se ha podido leer site-info.txt:', err);
+}
 
 // API key desde Vercel
 const apiKey = process.env.OPENAI_API_KEY;
@@ -13,8 +22,8 @@ if (!apiKey) {
 }
 
 export default async function handler(req, res) {
-  // CORS (puedes sustituir * por tu dominio cuando quieras)
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // CORS
+  res.setHeader('Access-Control-Allow-Origin', 'https://aquamarine-chaja-6ed417.netlify.app/');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -29,8 +38,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Vercel ya parsea JSON si el Content-Type es application/json,
-    // pero por si acaso controlamos ambos casos:
     const body =
       typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
 
@@ -47,9 +54,8 @@ Solo puedes responder basándote en la siguiente información:
 ${siteInfo}
 `;
 
-    console.log('🚀 Llamando a OpenAI con messages:', messages);
+    console.log('🚀 Llamando a OpenAI con messages:', JSON.stringify(messages, null, 2));
 
-    // Llamada a OpenAI vía fetch
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -66,6 +72,7 @@ ${siteInfo}
     });
 
     const completion = await openaiRes.json();
+    console.log('📦 Respuesta completa de OpenAI:', JSON.stringify(completion, null, 2));
 
     if (!openaiRes.ok) {
       console.error('🔥 Error desde OpenAI:', completion);
@@ -75,8 +82,15 @@ ${siteInfo}
       return;
     }
 
-    const answer = completion.choices?.[0]?.message?.content ?? '';
+    const answer = completion.choices?.[0]?.message?.content?.trim() ?? '';
+
     console.log('✅ Respuesta generada:', answer);
+
+    // Si por lo que sea sigue vacío, devolvemos un mensaje decente
+    if (!answer) {
+      res.status(200).json({ answer: 'No he podido generar respuesta con la información disponible.' });
+      return;
+    }
 
     res.status(200).json({ answer });
   } catch (error) {
