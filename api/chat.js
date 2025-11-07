@@ -1,45 +1,52 @@
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
 // Ruta robusta al site-info.txt
-const siteInfoPath = path.join(process.cwd(), 'public', 'site-info.txt');
-let siteInfo = '';
+const siteInfoPath = path.join(process.cwd(), "public", "site-info.txt");
+let siteInfo = "";
 
 try {
-  siteInfo = fs.readFileSync(siteInfoPath, 'utf-8');
-  console.log('✅ site-info.txt cargado desde:', siteInfoPath);
+  siteInfo = fs.readFileSync(siteInfoPath, "utf-8");
+  console.log("✅ site-info.txt cargado desde:", siteInfoPath);
 } catch (err) {
-  console.error('🔴 No se ha podido leer site-info.txt:', err);
+  console.error("🔴 No se ha podido leer site-info.txt:", err);
 }
 
 // API key desde Vercel
 const apiKey = process.env.OPENAI_API_KEY;
 
 if (!apiKey) {
-  console.error('🔴 FATAL: La variable de entorno OPENAI_API_KEY no está definida.');
+  console.error(
+    "🔴 FATAL: La variable de entorno OPENAI_API_KEY no está definida."
+  );
 } else {
-  console.log('✅ OPENAI_API_KEY cargada correctamente para el chatbot.');
+  console.log("✅ OPENAI_API_KEY cargada correctamente para el chatbot.");
 }
 
 export default async function handler(req, res) {
   // CORS
-  res.setHeader('Access-Control-Allow-Origin', 'https://aquamarine-chaja-6ed417.netlify.app/');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader(
+    "Access-Control-Allow-Origin",
+    "https://aquamarine-chaja-6ed417.netlify.app"
+  );
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     res.status(200).end();
     return;
   }
 
-  if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed', hint: 'Use POST' });
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "Method not allowed", hint: "Use POST" });
     return;
   }
 
   try {
     const body =
-      typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
+      typeof req.body === "string"
+        ? JSON.parse(req.body || "{}")
+        : req.body || {};
 
     const messages = body.messages;
 
@@ -54,49 +61,60 @@ Solo puedes responder basándote en la siguiente información:
 ${siteInfo}
 `;
 
-    console.log('🚀 Llamando a OpenAI con messages:', JSON.stringify(messages, null, 2));
+    console.log(
+      "🚀 Llamando a OpenAI con messages:",
+      JSON.stringify(messages, null, 2)
+    );
 
-    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4.1-mini',
-        messages: [
-          { role: 'system', content: siteContext },
-          ...messages,
-        ],
-      }),
-    });
+    const openaiRes = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          messages: [{ role: "system", content: siteContext }, ...messages],
+        }),
+      }
+    );
 
     const completion = await openaiRes.json();
-    console.log('📦 Respuesta completa de OpenAI:', JSON.stringify(completion, null, 2));
+    console.log(
+      "📦 Respuesta completa de OpenAI:",
+      JSON.stringify(completion, null, 2)
+    );
 
     if (!openaiRes.ok) {
-      console.error('🔥 Error desde OpenAI:', completion);
+      console.error("🔥 Error desde OpenAI:", completion);
       res
         .status(500)
-        .json({ error: 'Error al comunicarse con OpenAI (ver logs)' });
+        .json({ error: "Error al comunicarse con OpenAI (ver logs)" });
       return;
     }
 
-    const answer = completion.choices?.[0]?.message?.content?.trim() ?? '';
+    const answer = completion.choices?.[0]?.message?.content?.trim() ?? "";
 
-    console.log('✅ Respuesta generada:', answer);
+    console.log("✅ Respuesta generada:", answer);
 
     // Si por lo que sea sigue vacío, devolvemos un mensaje decente
     if (!answer) {
-      res.status(200).json({ answer: 'No he podido generar respuesta con la información disponible.' });
+      res
+        .status(200)
+        .json({
+          answer:
+            "No he podido generar respuesta con la información disponible.",
+        });
       return;
     }
 
     res.status(200).json({ answer });
   } catch (error) {
-    console.error('🔥 Error detallado al llamar a OpenAI:', error);
+    console.error("🔥 Error detallado al llamar a OpenAI:", error);
 
-    let errorMessage = 'Error al comunicarse con OpenAI';
+    let errorMessage = "Error al comunicarse con OpenAI";
     if (error instanceof Error) {
       errorMessage = `Error: ${error.message}`;
     }
