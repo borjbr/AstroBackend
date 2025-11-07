@@ -24,14 +24,23 @@ if (!apiKey) {
 }
 
 export default async function handler(req, res) {
-  // CORS
-  res.setHeader(
-    "Access-Control-Allow-Origin",
-    "https://aquamarine-chaja-6ed417.netlify.app"
-  );
+  // 🔐 CORS
+  const origin = req.headers.origin || "";
+
+  const allowedOrigins = [
+    "https://aquamarine-chaja-6ed417.netlify.app",
+    "http://localhost:4321", // Astro en local (ajusta si usas otro puerto)
+  ];
+
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
+  // Preflight
   if (req.method === "OPTIONS") {
     res.status(200).end();
     return;
@@ -99,17 +108,14 @@ ${siteInfo}
 
     console.log("✅ Respuesta generada:", answer);
 
-    // Si por lo que sea sigue vacío, devolvemos un mensaje decente
     if (!answer) {
-      res
-        .status(200)
-        .json({
-          answer:
-            "No he podido generar respuesta con la información disponible.",
-        });
+      res.status(200).json({
+        answer: "No he podido generar respuesta con la información disponible.",
+      });
       return;
     }
 
+    // 👈 FRONT lee `data.answer`
     res.status(200).json({ answer });
   } catch (error) {
     console.error("🔥 Error detallado al llamar a OpenAI:", error);
