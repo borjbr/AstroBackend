@@ -25,8 +25,7 @@ if (!apiKey) {
 
 // 🆕 URL del webhook de n8n desde env
 const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
-
-console.log("🌍 N8N_WEBHOOK_URL:", process.env.N8N_WEBHOOK_URL);
+console.log("🌍 N8N_WEBHOOK_URL:", n8nWebhookUrl);
 
 export default async function handler(req, res) {
   // 🔐 CORS
