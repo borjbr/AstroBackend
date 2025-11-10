@@ -35,7 +35,6 @@ export default async function handler(req, res) {
 
   const allowedOrigins = [
     "https://aquamarine-chaja-6ed417.netlify.app",
-    "http://localhost:4321", // Astro en local (ajusta si usas otro puerto)
   ];
 
   if (allowedOrigins.includes(origin)) {
