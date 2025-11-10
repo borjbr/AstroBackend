@@ -25,11 +25,12 @@ if (!apiKey) {
 
 // 🆕 URL del webhook de n8n desde env
 const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
-console.log("🌍 N8N_WEBHOOK_URL:", n8nWebhookUrl);
 
-console.log("holi");
 
 export default async function handler(req, res) {
+
+   console.log("🌍 N8N_WEBHOOK_URL dentro del handler:", n8nWebhookUrl);
+  console.log("holi desde handler");
   // 🔐 CORS
   const origin = req.headers.origin || "";
   
