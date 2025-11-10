@@ -122,7 +122,7 @@ export default async function handler(req, res) {
       let answer = "He intentado reservar tu cita, pero algo ha fallado.";
 
       // Asumimos que el workflow de n8n devuelve algo tipo:
-      // { ok: true, message: '...', appointment: { start, end, ... } }
+      // { ok: true, message: '...', appointment: { start, end, ... } 
       if (n8nData.ok && n8nData.appointment) {
         const start = n8nData.appointment.start;
         const end = n8nData.appointment.end;
