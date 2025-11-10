@@ -14,26 +14,17 @@ try {
 
 // API key desde Vercel
 const apiKey = process.env.OPENAI_API_KEY;
+const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
 
 if (!apiKey) {
-  console.error(
-    "🔴 FATAL: La variable de entorno OPENAI_API_KEY no está definida."
-  );
+  console.error("🔴 FATAL: La variable de entorno OPENAI_API_KEY no está definida.");
 } else {
   console.log("✅ OPENAI_API_KEY cargada correctamente para el chatbot.");
 }
 
-// 🆕 URL del webhook de n8n desde env
-const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
-
-
 export default async function handler(req, res) {
-
-   console.log("🌍 N8N_WEBHOOK_URL dentro del handler:", n8nWebhookUrl);
-  console.log("holi desde handler");
   // 🔐 CORS
   const origin = req.headers.origin || "";
-  
 
   const allowedOrigins = [
     "https://aquamarine-chaja-6ed417.netlify.app",
@@ -47,7 +38,6 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  // Preflight
   if (req.method === "OPTIONS") {
     res.status(200).end();
     return;
@@ -71,79 +61,50 @@ export default async function handler(req, res) {
       return;
     }
 
-    // 🆕 1. Detectar el último mensaje del usuario
-    const lastUserMessage =
-      [...messages].reverse().find((m) => m.role === "user")?.content || "";
-
-    console.log("🧠 Último mensaje del usuario:", lastUserMessage);
-
-    // 🆕 2. Si el usuario pide una cita → vamos a n8n en lugar de ir a OpenAI
-    const quiereCita = /cita/i.test(lastUserMessage); // puedes afinar este regex
-
-    if (quiereCita && n8nWebhookUrl) {
-      console.log("📅 Detectada intención de cita. Enviando a n8n...");
-
-      // Aquí podrías sacar name/email del body si los tienes
-      const userName = body.name || "Invitado";
-      const userEmail = body.email || "invitado@example.com";
-
-      const payload = {
-        intent: "book_appointment",
-        user: {
-          name: userName,
-          email: userEmail,
-        },
-        constraints: {
-          durationMinutes: 30,
-          // Para simplificar, hoy y próximos 7 días
-          fromDate: new Date().toISOString().slice(0, 10),
-          toDate: new Date(
-            Date.now() + 7 * 24 * 60 * 60 * 1000
-          )
-            .toISOString()
-            .slice(0, 10),
-          timeWindow: {
-            start: "10:00",
-            end: "14:00",
-          },
-          timezone: "Europe/Madrid",
-        },
-        // Podemos mandar el propio mensaje como nota
-        notes: lastUserMessage,
-      };
-
-      const n8nRes = await fetch(n8nWebhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const n8nData = await n8nRes.json();
-      console.log("📦 Respuesta de n8n:", JSON.stringify(n8nData, null, 2));
-
-      let answer = "He intentado reservar tu cita, pero algo ha fallado.";
-
-      // Asumimos que el workflow de n8n devuelve algo tipo:
-      // { ok: true, message: '...', appointment: { start, end, ... } 
-      if (n8nData.ok && n8nData.appointment) {
-        const start = n8nData.appointment.start;
-        const end = n8nData.appointment.end;
-
-        answer = `He reservado tu cita para el ${start}. Te llegará la confirmación al correo ${userEmail}.`;
-      } else if (n8nData.message) {
-        answer = n8nData.message;
-      }
-
-      // Devolvemos al front en el mismo formato que ya usas
-      res.status(200).json({ answer, raw: n8nData });
-      return; // 👈 importante: no seguimos a OpenAI en este caso
-    }
-
-    // 🧠 Si NO es cita, seguimos con tu flujo normal de OpenAI
     const siteContext = `
-Eres el asistente oficial de esta web.
-Solo puedes responder basándote en la siguiente información:
+Eres Carla, la recepcionista virtual de la clínica dental SonrisaPerfecta.
+Hablas siempre en tono cercano, educado y profesional, como una recepcionista real.
+
+TU OBJETIVO PRINCIPAL:
+- Ayudar al usuario a INFORMARSE sobre la clínica y,
+- si quiere pedir una cita, GUIARLE paso a paso para conseguir todos los datos necesarios
+  y luego generar una solicitud de reserva estructurada.
+
+INFORMACIÓN DE LA CLÍNICA (para responder preguntas normales):
 ${siteInfo}
+
+CUANDO EL USUARIO QUIERA UNA CITA:
+
+1. Confirma que puedes ayudarle.
+2. Pide estos datos: nombre y apellidos, email y teléfono, motivo de la cita,
+   rango de fechas y franja horaria.
+3. Repite/resume los datos importantes, sobre todo fecha y hora.
+4. SOLO CUANDO YA TENGAS TODOS LOS DATOS y el usuario confirme que quiere reservar,
+   genera un JSON EXACTO con este formato:
+
+{
+  "intent": "book_appointment",
+  "user": {
+    "name": "Nombre Apellidos",
+    "email": "correo@ejemplo.com",
+    "phone": "666777888"
+  },
+  "constraints": {
+    "durationMinutes": 30,
+    "fromDate": "YYYY-MM-DD",
+    "toDate": "YYYY-MM-DD",
+    "timeWindow": {
+      "start": "HH:MM",
+      "end": "HH:MM"
+    },
+    "timezone": "Europe/Madrid"
+  },
+  "notes": "Motivo de la cita y detalles relevantes."
+}
+
+IMPORTANTE:
+- Cuando generes este JSON, RESPONDE ÚNICAMENTE con el JSON, sin texto adicional.
+- Si no estás segura de algún dato, pregunta antes al usuario.
 `;
 
     console.log(
@@ -151,20 +112,17 @@ ${siteInfo}
       JSON.stringify(messages, null, 2)
     );
 
-    const openaiRes = await fetch(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-4.1-mini",
-          messages: [{ role: "system", content: siteContext }, ...messages],
-        }),
-      }
-    );
+    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        messages: [{ role: "system", content: siteContext }, ...messages],
+      }),
+    });
 
     const completion = await openaiRes.json();
     console.log(
@@ -180,18 +138,61 @@ ${siteInfo}
       return;
     }
 
-    const answer = completion.choices?.[0]?.message?.content?.trim() ?? "";
+    let rawAnswer = completion.choices?.[0]?.message?.content?.trim() ?? "";
+    console.log("📝 Respuesta generada (raw):", rawAnswer);
 
-    console.log("✅ Respuesta generada:", answer);
+    // 🧠 INTENTO 1: ¿es un JSON de reserva de cita?
+    let parsed;
+    try {
+      parsed = JSON.parse(rawAnswer);
+    } catch (e) {
+      parsed = null;
+    }
 
-    if (!answer) {
-      res.status(200).json({
-        answer: "No he podido generar respuesta con la información disponible.",
+    if (
+      parsed &&
+      parsed.intent === "book_appointment" &&
+      n8nWebhookUrl
+    ) {
+      console.log("📅 Detectado JSON de reserva, enviando a n8n...", parsed);
+
+      // Enviamos directamente a n8n el JSON tal cual
+      const n8nRes = await fetch(n8nWebhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed),
       });
+
+      const n8nData = await n8nRes.json();
+      console.log("📦 Respuesta de n8n:", JSON.stringify(n8nData, null, 2));
+
+      let answer = "He intentado reservar tu cita, pero algo ha fallado.";
+
+      if (n8nData.ok && n8nData.appointment) {
+        const start = n8nData.appointment.start;
+
+        // Formateamos fecha bonita en español
+        const fecha = new Date(start).toLocaleString("es-ES", {
+          dateStyle: "full",
+          timeStyle: "short",
+          timeZone: "Europe/Madrid",
+        });
+
+        const email = parsed.user?.email || "tu correo de contacto";
+
+        answer = `Perfecto, he reservado tu cita para el ${fecha}. Te llegará la confirmación a ${email}.`;
+      } else if (n8nData.message) {
+        answer = n8nData.message;
+      }
+
+      res.status(200).json({ answer, raw: n8nData });
       return;
     }
 
-    // 👈 FRONT lee `data.answer`
+    // 🧠 Si NO era JSON de reserva, devolvemos la respuesta normal del asistente
+    const answer = rawAnswer || "No he podido generar respuesta con la información disponible.";
+    console.log("✅ Respuesta final al usuario:", answer);
+
     res.status(200).json({ answer });
   } catch (error) {
     console.error("🔥 Error detallado al llamar a OpenAI:", error);
