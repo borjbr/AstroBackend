@@ -1,33 +1,27 @@
 import fs from "fs";
 import path from "path";
 
-// Ruta robusta al site-info.txt
+// ---- Carga site-info.txt
 const siteInfoPath = path.join(process.cwd(), "public", "site-info.txt");
 let siteInfo = "";
-
 try {
   siteInfo = fs.readFileSync(siteInfoPath, "utf-8");
-  console.log("✅ site-info.txt cargado desde:", siteInfoPath);
+  console.log("✅ site-info.txt cargado:", siteInfoPath);
 } catch (err) {
   console.error("🔴 No se ha podido leer site-info.txt:", err);
 }
 
-// API key desde Vercel
+// ---- Env vars
 const apiKey = process.env.OPENAI_API_KEY;
 const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
 
-if (!apiKey) {
-  console.error("🔴 FATAL: La variable de entorno OPENAI_API_KEY no está definida.");
-} else {
-  console.log("✅ OPENAI_API_KEY cargada correctamente para el chatbot.");
-}
+if (!apiKey) console.error("🔴 FATAL: OPENAI_API_KEY no definida.");
+else console.log("✅ OPENAI_API_KEY cargada.");
 
 export default async function handler(req, res) {
-  // 🔐 CORS
+  // ---- CORS
   const origin = req.headers.origin || "";
-  const allowedOrigins = [
-    "https://aquamarine-chaja-6ed417.netlify.app",
-  ];
+  const allowedOrigins = ["https://aquamarine-chaja-6ed417.netlify.app"];
   if (allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
@@ -35,60 +29,40 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  if (req.method === "OPTIONS") {
-    res.status(200).end();
-    return;
-  }
+  if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") {
-    res.status(405).json({ error: "Method not allowed", hint: "Use POST" });
-    return;
+    return res.status(405).json({ error: "Method not allowed", hint: "Use POST" });
   }
 
   try {
+    // ---- Body
     const body =
-      typeof req.body === "string"
-        ? JSON.parse(req.body || "{}")
-        : req.body || {};
-
+      typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
     const messages = body.messages;
     if (!messages || !Array.isArray(messages)) {
-      res.status(400).json({ error: '"messages" debe ser un array válido' });
-      return;
+      return res.status(400).json({ error: '"messages" debe ser un array válido' });
     }
 
+    // ---- System prompt
     const siteContext = `
 Eres Carmen Aguirre Ruigomez, la recepcionista virtual de la clínica dental SonrisaPerfecta.
-Hablas siempre en tono cercano, educado y profesional, como una recepcionista real.
+Hablas en tono cercano, educado y profesional.
 
-TU OBJETIVO PRINCIPAL:
-- Ayudar al usuario a INFORMARSE sobre la clínica y,
-- si quiere pedir una cita, GUIARLE paso a paso para conseguir todos los datos necesarios
-  y luego generar una solicitud de reserva estructurada.
-- Trabajamos normalmente con citas en el año 2025 (año actual), pero NUNCA debes inventar un año si el usuario no lo ha confirmado.
-- Solo agendas citas dentro del horario laboral de la clínica: lunes a viernes, de 9:00 a 18:00 (hora de Madrid).
+TU OBJETIVO:
+- Informar y, si el usuario quiere cita, guiarle para obtener datos completos y generar un JSON de reserva.
+- Nunca inventes mes/año/hora si faltan: pregunta antes.
+- Horario de la clínica: L-V de 09:00 a 18:00 (Europe/Madrid).
 
-Interpretación de fechas y horas:
-- Todas las fechas que pongas en el JSON deben ir en formato "YYYY-MM-DD".
-- Todas las horas se deben convertir SIEMPRE a formato 24 horas "HH:MM".
-- Debes entender expresiones coloquiales de hora en español y normalizarlas (11 y media → 11:30, etc.)
-- Si falta mes/año/hora exacta, PREGUNTA antes de generar el JSON. No inventes.
+Formatea fechas como "YYYY-MM-DD" y horas "HH:MM".
+Entiende expresiones como "once y media" -> "11:30".
 
-INFORMACIÓN DE LA CLÍNICA:
+Info de la clínica:
 ${siteInfo}
 
-CUANDO EL USUARIO QUIERA UNA CITA:
-1) Pide nombre, email, teléfono, motivo, fecha(s) y franja.
-2) Normaliza a "YYYY-MM-DD" y "HH:MM".
-3) Pide confirmación.
-4) SOLO entonces genera exactamente este JSON (sin texto adicional):
-
+Cuando tengas todos los datos CONFIRMADOS, responde SOLO con este JSON (sin texto extra):
 {
   "intent": "book_appointment",
-  "user": {
-    "name": "Nombre Apellidos",
-    "email": "correo@ejemplo.com",
-    "phone": "666777888"
-  },
+  "user": { "name": "Nombre Apellidos", "email": "correo@ejemplo.com", "phone": "666777888" },
   "constraints": {
     "durationMinutes": 30,
     "fromDate": "YYYY-MM-DD",
@@ -96,15 +70,14 @@ CUANDO EL USUARIO QUIERA UNA CITA:
     "timeWindow": { "start": "HH:MM", "end": "HH:MM" },
     "timezone": "Europe/Madrid"
   },
-  "notes": "Motivo de la cita y detalles relevantes."
+  "notes": "Motivo de la cita..."
 }
 
-DESPUÉS DE CREAR LA CITA (solo si el sistema te lo confirma):
-- Da un mensaje corto con fecha y hora y confirma que se ha enviado el email.
-`;
+Tras recibir confirmación DEL SISTEMA de que la cita se creó, ya puedes comunicarlo al usuario.`;
 
     console.log("🚀 Llamando a OpenAI con messages:", JSON.stringify(messages, null, 2));
 
+    // ---- OpenAI
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -117,53 +90,56 @@ DESPUÉS DE CREAR LA CITA (solo si el sistema te lo confirma):
       }),
     });
 
-    const completion = await openaiRes.json();
-    console.log("📦 Respuesta completa de OpenAI:", JSON.stringify(completion, null, 2));
+    const completionText = await openaiRes.text(); // tolerante
+    let completion;
+    try { completion = JSON.parse(completionText); } catch { completion = {}; }
 
     if (!openaiRes.ok) {
-      console.error("🔥 Error desde OpenAI:", completion);
-      res.status(500).json({ error: "Error al comunicarse con OpenAI (ver logs)" });
-      return;
+      console.error("🔥 Error desde OpenAI:", completion || completionText);
+      return res.status(500).json({ error: "Error al comunicarse con OpenAI (ver logs)" });
     }
 
-    let rawAnswer = completion.choices?.[0]?.message?.content?.trim() ?? "";
+    const rawAnswer = completion?.choices?.[0]?.message?.content?.trim() ?? "";
     console.log("📝 Respuesta generada (raw):", rawAnswer);
 
-    // 🧠 INTENTO 1: ¿es un JSON de reserva de cita?
-    let parsed;
-    try {
-      parsed = JSON.parse(rawAnswer);
-    } catch {
-      parsed = null;
-    }
+    // ---- ¿Es JSON de reserva?
+    let parsed = null;
+    try { parsed = JSON.parse(rawAnswer); } catch {}
 
     if (parsed && parsed.intent === "book_appointment" && n8nWebhookUrl) {
-      console.log("📅 Detectado JSON de reserva, enviando a n8n...", parsed);
+      console.log("📅 JSON de reserva detectado, enviando a n8n…", parsed);
 
-      // Enviar a n8n
+      // ---- Llamada a n8n
       const n8nRes = await fetch(n8nWebhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(parsed),
       });
 
+      const raw = await n8nRes.text(); // puede venir vacío o texto
       let n8nData;
-      const raw = await n8nRes.text();
       try {
-        n8nData = JSON.parse(raw);
+        n8nData = raw ? JSON.parse(raw) : null;
       } catch {
-        n8nData = { ok: false, code: "BAD_GATEWAY", message: "Respuesta no JSON desde n8n", raw };
+        n8nData = null;
       }
-      console.log("📦 Respuesta de n8n:", JSON.stringify(n8nData, null, 2));
 
-      // 🔎 Normalizamos lectura de campos
+      // Si n8n no devolvió JSON, devolvemos mensaje claro (pero sin romper 500)
+      if (!n8nData || typeof n8nData !== "object") {
+        const payload = { ok: false, code: "BAD_GATEWAY", message: "Respuesta no JSON desde n8n", raw: raw ?? "" };
+        console.warn("⚠️ Respuesta no JSON desde n8n:", payload);
+        return res.status(200).json({ answer: payload.message, raw: payload });
+      }
+
+      console.log("📦 Respuesta de n8n (objeto):", JSON.stringify(n8nData, null, 2));
+
+      // ---- Normalización de campos
       const ok = !!n8nData.ok;
       const eventId = n8nData.eventId || n8nData.id || null;
       const appointment = n8nData.appointment || null;
       const code = n8nData.code || null;
       const msg = n8nData.message || null;
 
-      // 🗓️ formateador seguro
       const prettyDate = (iso) => {
         try {
           return new Date(iso).toLocaleString("es-ES", {
@@ -176,48 +152,40 @@ DESPUÉS DE CREAR LA CITA (solo si el sistema te lo confirma):
         }
       };
 
-      // 🟩 ÉXITO REAL: solo si hay eventId
+      // ✅ Éxito real SOLO con eventId
       if (ok && eventId && appointment?.start) {
         const fecha = prettyDate(appointment.start);
         const email = parsed.user?.email || "tu correo";
         const answer = `Perfecto, he reservado tu cita para el ${fecha}. Te llegará la confirmación a ${email}.`;
-        res.status(200).json({ answer, raw: n8nData });
-        return;
+        return res.status(200).json({ answer, raw: n8nData });
       }
 
-      // 🟨 CASOS DE NEGOCIO CONTROLADOS
+      // Casos de negocio controlados
       if (!ok && code === "NO_AVAIL") {
-        const answer = msg || "No hay huecos libres en ese rango.";
-        res.status(200).json({ answer, raw: n8nData });
-        return;
+        return res.status(200).json({ answer: (msg || "No hay huecos libres en ese rango."), raw: n8nData });
       }
-
       if (!ok && code === "CAL_CREATE_ERROR") {
-        const answer = msg || "No he podido crear el evento en la agenda. Inténtalo de nuevo.";
-        res.status(200).json({ answer, raw: n8nData });
-        return;
+        return res.status(200).json({ answer: (msg || "No he podido crear el evento en la agenda. Inténtalo de nuevo."), raw: n8nData });
       }
-
       if (!ok && code === "BAD_PAYLOAD") {
-        const answer = msg || "Los datos de la solicitud están incompletos o son inválidos.";
-        res.status(200).json({ answer, raw: n8nData });
-        return;
+        return res.status(200).json({ answer: (msg || "Los datos de la solicitud están incompletos o no son válidos."), raw: n8nData });
       }
 
-      // 🟥 FALLO GENÉRICO
-      const fallback = msg || "He intentado reservar tu cita, pero algo ha fallado.";
-      res.status(200).json({ answer: fallback, raw: n8nData });
-      return;
+      // Fallback genérico
+      return res.status(200).json({
+        answer: (msg || "He intentado reservar tu cita, pero algo ha fallado."),
+        raw: n8nData,
+      });
     }
 
-    // 🧠 Si NO era JSON de reserva, devolvemos la respuesta normal del asistente
+    // ---- No era JSON de reserva: devuelve respuesta normal del asistente
     const answer = rawAnswer || "No he podido generar respuesta con la información disponible.";
     console.log("✅ Respuesta final al usuario:", answer);
-    res.status(200).json({ answer });
+    return res.status(200).json({ answer });
+
   } catch (error) {
-    console.error("🔥 Error detallado al llamar a OpenAI:", error);
-    let errorMessage = "Error al comunicarse con OpenAI";
-    if (error instanceof Error) errorMessage = `Error: ${error.message}`;
-    res.status(500).json({ error: errorMessage });
+    console.error("🔥 Error detallado en /api/chat:", error);
+    const msg = error instanceof Error ? `Error: ${error.message}` : "Error al comunicarse con OpenAI";
+    return res.status(500).json({ error: msg });
   }
 }
