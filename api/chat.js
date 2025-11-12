@@ -25,15 +25,12 @@ if (!apiKey) {
 export default async function handler(req, res) {
   // 🔐 CORS
   const origin = req.headers.origin || "";
-
   const allowedOrigins = [
     "https://aquamarine-chaja-6ed417.netlify.app",
   ];
-
   if (allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
-
   res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -42,7 +39,6 @@ export default async function handler(req, res) {
     res.status(200).end();
     return;
   }
-
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed", hint: "Use POST" });
     return;
@@ -55,13 +51,12 @@ export default async function handler(req, res) {
         : req.body || {};
 
     const messages = body.messages;
-
     if (!messages || !Array.isArray(messages)) {
       res.status(400).json({ error: '"messages" debe ser un array válido' });
       return;
     }
 
-const siteContext = `
+    const siteContext = `
 Eres Carmen Aguirre Ruigomez, la recepcionista virtual de la clínica dental SonrisaPerfecta.
 Hablas siempre en tono cercano, educado y profesional, como una recepcionista real.
 
@@ -75,55 +70,17 @@ TU OBJETIVO PRINCIPAL:
 Interpretación de fechas y horas:
 - Todas las fechas que pongas en el JSON deben ir en formato "YYYY-MM-DD".
 - Todas las horas se deben convertir SIEMPRE a formato 24 horas "HH:MM".
+- Debes entender expresiones coloquiales de hora en español y normalizarlas (11 y media → 11:30, etc.)
+- Si falta mes/año/hora exacta, PREGUNTA antes de generar el JSON. No inventes.
 
-- Debes entender expresiones coloquiales de hora en español y normalizarlas, por ejemplo:
-  - "a las 11 y media" → 11:30
-  - "a las once y media" → 11:30
-  - "a las 4 y cuarto" → 16:15
-  - "a las cuatro y cuarto" → 16:15
-  - "a las cinco menos cuarto" → 16:45
-  - "a las nueve y diez" → 09:10
-  - "sobre las 3 y media de la tarde" → 15:30
-  - "a eso de las 10 y media de la mañana" → 10:30
-
-- MUY IMPORTANTE: nunca inventes datos de fecha.
-  - Si el usuario dice algo como "viernes 14 a las 12 de la mañana" sin indicar el mes, NO inventes el mes.
-    Debes preguntar algo como: "¿De qué mes hablamos exactamente?" antes de continuar.
-  - Si el usuario menciona solo un día de la semana ("el viernes por la tarde", "el lunes 14 por la mañana")
-    y no queda claro el mes o el año, debes preguntar:
-    - por el mes: "¿De qué mes te vendría bien, Borja?"
-    - y por el año si no está claro: "¿En qué año sería, 2025 u otro?"
-  - Si el usuario no dice el año, puedes asumir que habla de 2025, pero SIEMPRE debes decirlo en voz alta
-    y pedir confirmación, por ejemplo:
-    "Entiendo que te refieres a 2025. Si no es así, dime el año exacto, por favor."
-
-- Antes de generar el JSON final, asegúrate de tener siempre:
-  - Día numérico (DD)
-  - Mes (MM o nombre del mes)
-  - Año (YYYY, normalmente 2025)
-  - Hora normalizada en formato HH:MM
-  Si falta cualquiera de esos datos, PREGUNTA al usuario y NO generes el JSON todavía.
-
-Horario de la clínica:
-- La clínica está ABIERTA de lunes a viernes, de 09:00 a 18:00 (hora de Madrid).
-- Si la hora propuesta por el usuario, una vez normalizada, está FUERA de ese horario
-  (por ejemplo, de noche o en fin de semana), responde algo como:
-  "Lo siento, Borja, la clínica está abierta de lunes a viernes de 9:00 a 18:00. ¿Te gustaría que busque un hueco dentro de ese horario?"
-- Si la hora está DENTRO de ese horario, NO debes decir que la clínica está cerrada.
-  En ese caso, continúa con el flujo normal de reserva.
-
-INFORMACIÓN DE LA CLÍNICA (para responder preguntas normales):
+INFORMACIÓN DE LA CLÍNICA:
 ${siteInfo}
 
 CUANDO EL USUARIO QUIERA UNA CITA:
-
-1. Confirma que puedes ayudarle.
-2. Pide estos datos: nombre y apellidos, email y teléfono, motivo de la cita,
-   rango de fechas y franja horaria.
-3. Asegúrate de que la fecha esté completa (día, mes y año) y la hora esté en formato HH:MM.
-4. Repite/resume los datos importantes, sobre todo fecha y hora, y pide confirmación.
-5. SOLO CUANDO YA TENGAS TODOS LOS DATOS y el usuario confirme que quiere reservar,
-   genera un JSON EXACTO con este formato:
+1) Pide nombre, email, teléfono, motivo, fecha(s) y franja.
+2) Normaliza a "YYYY-MM-DD" y "HH:MM".
+3) Pide confirmación.
+4) SOLO entonces genera exactamente este JSON (sin texto adicional):
 
 {
   "intent": "book_appointment",
@@ -136,34 +93,17 @@ CUANDO EL USUARIO QUIERA UNA CITA:
     "durationMinutes": 30,
     "fromDate": "YYYY-MM-DD",
     "toDate": "YYYY-MM-DD",
-    "timeWindow": {
-      "start": "HH:MM",
-      "end": "HH:MM"
-    },
+    "timeWindow": { "start": "HH:MM", "end": "HH:MM" },
     "timezone": "Europe/Madrid"
   },
   "notes": "Motivo de la cita y detalles relevantes."
 }
 
-IMPORTANTE:
-- Cuando generes este JSON, RESPONDE ÚNICAMENTE con el JSON, sin texto adicional.
-- Si no estás segura de algún dato (por ejemplo, falta el mes, el año, el día o la hora exacta), pregunta antes al usuario y NO inventes información.
-
-DESPUÉS DE CREAR LA CITA (cuando el sistema te indique que se ha creado correctamente):
-
-- Si en el flujo recibes un mensaje del sistema del estilo "Cita creada correctamente en Google Calendar",
-  responde al usuario con un mensaje corto y amable, por ejemplo:
-  "Perfecto, [nombre]. He reservado tu cita para el [fecha] a las [hora].
-  Muchas gracias, te he enviado un correo de confirmación a tu dirección de email.
-  Si necesitas cambiar o cancelar la cita, dímelo y te ayudo."
+DESPUÉS DE CREAR LA CITA (solo si el sistema te lo confirma):
+- Da un mensaje corto con fecha y hora y confirma que se ha enviado el email.
 `;
 
-
-
-    console.log(
-      "🚀 Llamando a OpenAI con messages:",
-      JSON.stringify(messages, null, 2)
-    );
+    console.log("🚀 Llamando a OpenAI con messages:", JSON.stringify(messages, null, 2));
 
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -178,16 +118,11 @@ DESPUÉS DE CREAR LA CITA (cuando el sistema te indique que se ha creado correct
     });
 
     const completion = await openaiRes.json();
-    console.log(
-      "📦 Respuesta completa de OpenAI:",
-      JSON.stringify(completion, null, 2)
-    );
+    console.log("📦 Respuesta completa de OpenAI:", JSON.stringify(completion, null, 2));
 
     if (!openaiRes.ok) {
       console.error("🔥 Error desde OpenAI:", completion);
-      res
-        .status(500)
-        .json({ error: "Error al comunicarse con OpenAI (ver logs)" });
+      res.status(500).json({ error: "Error al comunicarse con OpenAI (ver logs)" });
       return;
     }
 
@@ -198,63 +133,91 @@ DESPUÉS DE CREAR LA CITA (cuando el sistema te indique que se ha creado correct
     let parsed;
     try {
       parsed = JSON.parse(rawAnswer);
-    } catch (e) {
+    } catch {
       parsed = null;
     }
 
-    if (
-      parsed &&
-      parsed.intent === "book_appointment" &&
-      n8nWebhookUrl
-    ) {
+    if (parsed && parsed.intent === "book_appointment" && n8nWebhookUrl) {
       console.log("📅 Detectado JSON de reserva, enviando a n8n...", parsed);
 
-      // Enviamos directamente a n8n el JSON tal cual
+      // Enviar a n8n
       const n8nRes = await fetch(n8nWebhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(parsed),
       });
 
-      const n8nData = await n8nRes.json();
+      let n8nData;
+      const raw = await n8nRes.text();
+      try {
+        n8nData = JSON.parse(raw);
+      } catch {
+        n8nData = { ok: false, code: "BAD_GATEWAY", message: "Respuesta no JSON desde n8n", raw };
+      }
       console.log("📦 Respuesta de n8n:", JSON.stringify(n8nData, null, 2));
 
-      let answer = "He intentado reservar tu cita, pero algo ha fallado.";
+      // 🔎 Normalizamos lectura de campos
+      const ok = !!n8nData.ok;
+      const eventId = n8nData.eventId || n8nData.id || null;
+      const appointment = n8nData.appointment || null;
+      const code = n8nData.code || null;
+      const msg = n8nData.message || null;
 
-      if (n8nData.ok && n8nData.appointment) {
-        const start = n8nData.appointment.start;
+      // 🗓️ formateador seguro
+      const prettyDate = (iso) => {
+        try {
+          return new Date(iso).toLocaleString("es-ES", {
+            dateStyle: "full",
+            timeStyle: "short",
+            timeZone: "Europe/Madrid",
+          });
+        } catch {
+          return iso;
+        }
+      };
 
-        // Formateamos fecha bonita en español
-        const fecha = new Date(start).toLocaleString("es-ES", {
-          dateStyle: "full",
-          timeStyle: "short",
-          timeZone: "Europe/Madrid",
-        });
-
-        const email = parsed.user?.email || "tu correo de contacto";
-
-        answer = `Perfecto, he reservado tu cita para el ${fecha}. Te llegará la confirmación a ${email}.`;
-      } else if (n8nData.message) {
-        answer = n8nData.message;
+      // 🟩 ÉXITO REAL: solo si hay eventId
+      if (ok && eventId && appointment?.start) {
+        const fecha = prettyDate(appointment.start);
+        const email = parsed.user?.email || "tu correo";
+        const answer = `Perfecto, he reservado tu cita para el ${fecha}. Te llegará la confirmación a ${email}.`;
+        res.status(200).json({ answer, raw: n8nData });
+        return;
       }
 
-      res.status(200).json({ answer, raw: n8nData });
+      // 🟨 CASOS DE NEGOCIO CONTROLADOS
+      if (!ok && code === "NO_AVAIL") {
+        const answer = msg || "No hay huecos libres en ese rango.";
+        res.status(200).json({ answer, raw: n8nData });
+        return;
+      }
+
+      if (!ok && code === "CAL_CREATE_ERROR") {
+        const answer = msg || "No he podido crear el evento en la agenda. Inténtalo de nuevo.";
+        res.status(200).json({ answer, raw: n8nData });
+        return;
+      }
+
+      if (!ok && code === "BAD_PAYLOAD") {
+        const answer = msg || "Los datos de la solicitud están incompletos o son inválidos.";
+        res.status(200).json({ answer, raw: n8nData });
+        return;
+      }
+
+      // 🟥 FALLO GENÉRICO
+      const fallback = msg || "He intentado reservar tu cita, pero algo ha fallado.";
+      res.status(200).json({ answer: fallback, raw: n8nData });
       return;
     }
 
     // 🧠 Si NO era JSON de reserva, devolvemos la respuesta normal del asistente
     const answer = rawAnswer || "No he podido generar respuesta con la información disponible.";
     console.log("✅ Respuesta final al usuario:", answer);
-
     res.status(200).json({ answer });
   } catch (error) {
     console.error("🔥 Error detallado al llamar a OpenAI:", error);
-
     let errorMessage = "Error al comunicarse con OpenAI";
-    if (error instanceof Error) {
-      errorMessage = `Error: ${error.message}`;
-    }
-
+    if (error instanceof Error) errorMessage = `Error: ${error.message}`;
     res.status(500).json({ error: errorMessage });
   }
 }
